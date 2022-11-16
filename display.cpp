@@ -2,8 +2,8 @@
  * @file display.cpp
  * @author Daniel Quadros
  * @brief Módulo simples para apresentar números e texto num display Nokia 5110
- * @version 0.1
- * @date 2022-09-07
+ * @version 2.0
+ * @date 2022-09-16
  * 
  * @copyright Copyright (c) 2022, Daniel Quadros
  * 
@@ -17,6 +17,7 @@
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
 #include "hardware/dma.h"
+#include "hardware/pio.h"
 
 #include "picotermostato.h"
 

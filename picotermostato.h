@@ -2,8 +2,8 @@
  * @file picotermostato.h
  * @author Daniel Quadros
  * @brief Definições globais para o projeto picotermostato
- * @version 0.1
- * @date 2022-11-03
+ * @version 2.0
+ * @date 2022-11-16
  * 
  * @copyright Copyright (c) 2022
  * 
@@ -12,9 +12,9 @@
 // Conexões do circuito
 #define PIN_SENSOR 10
 
-#define PIN_TEC_UP     11
-#define PIN_TEC_DN     12
-#define PIN_TEC_ENTER  13
+#define PIN_ENC_SW     11
+#define PIN_ENC_DT     12
+#define PIN_ENC_CLK    13
 
 #define SPI_ID spi1
 #define PIN_SCLK  14
@@ -25,15 +25,17 @@
 
 #define PIN_RELE  21
 
-// Teclado
-typedef struct {
-    int gpio;
-    bool apertada;
-    int cnt_debounce;
-} TECLA;
+#define I2C_ID i2c1
+#define PIN_SDA  26
+#define PIN_SCL  27
 
-// Teclado
-void tecInit (TECLA *teclas, int nteclas);
+// Teclas
+#define TECLA_ENTER 0
+#define TECLA_UP    1
+#define TECLA_DN    2
+
+// Encoder
+void encoderInit (PIO pio, uint pin_a, uint pin_b, uint pin_sw);
 int tecLe (void);
 
 // Display
@@ -47,4 +49,9 @@ void displayClear (void);
 // Sensor
 void sensorInit (void);
 int sensorLe (void);
+
+// EEProm
+void eepromInit(uint pinSDA, uint pinSCL);
+bool eepromRead(uint8_t *buffer, uint16_t addr, int n);
+bool eepromWrite(uint8_t *buffer, uint16_t addr, int n);
 

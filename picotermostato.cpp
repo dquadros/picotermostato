@@ -4,8 +4,8 @@
  * @brief  Implementação simples de um termostato
  *         O objetivo é exercitar os recursos do RP2040
  *         *** NÃO É UMA APLICAÇÃO PARA USO REAL ***
- * @version 0.1
- * @date 2022-11-03
+ * @version 2.0
+ * @date 2022-11-16
  * 
  * @copyright Copyright (c) 2022, Daniel Quadros
  * 
@@ -17,34 +17,74 @@
 
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
+#include "hardware/pio.h"
 
 #include "picotermostato.h"
 
+// Controle de acesso à temperatura atual
+static critical_section critTemp;
+
 // Controles do termostato
-// Num projeto real tempLiga e tempDesliga seriam salvos em memória não volátil
 static int tempAtual = 20;
-static int tempLiga = 22;
-static int tempDesliga = 25;
+static int tempLiga = 0;
+static int tempDesliga = 0;
 static bool ligado = false;
-
-static critical_section_t critTemp;
-
-// Definição das teclas
-static TECLA teclas[] = {
-     { PIN_TEC_UP, false, 0 },
-     { PIN_TEC_DN, false, 0 },  
-     { PIN_TEC_ENTER, false, 0 }
-};
-#define N_TECLAS (sizeof(teclas)/sizeof (TECLA))
-#define TECLA_UP    0
-#define TECLA_DN    1
-#define TECLA_ENTER 2
 
 // Campos durante a configuração
 #define CPO_NENHUM  0
 #define CPO_LIGA    1
 #define CPO_DESLIGA 2
 
+// Estrutura da nossa configuração
+typedef struct {
+    int tempOn;
+    int tempOff;
+    int chksum;
+} CONFIG;
+
+// Onde a configuração é salva na EEPROM
+// Gravamos duas cópias para o caso de perder a alimentação
+// durante a gravação
+#define CFG1_ADDR 0
+#define CFG2_ADDR sizeof(CONFIG)
+
+// Salva a configuração na EEPROM
+void salvaConfig() {
+    CONFIG cfg;
+    cfg.tempOn = tempLiga;
+    cfg.tempOff = tempDesliga;
+    cfg.chksum = cfg.tempOn + cfg.tempOff;
+    eepromWrite((uint8_t *) &cfg, CFG1_ADDR, sizeof(cfg));
+    eepromWrite((uint8_t *) &cfg, CFG2_ADDR, sizeof(cfg));
+}
+
+// Le a configuração da EEPROM
+void leConfig() {
+    CONFIG cfg;
+    uint16_t addr = CFG1_ADDR;
+
+    do {
+        if (eepromRead((uint8_t *) &cfg, addr, sizeof(cfg))) {
+            if (cfg.chksum == (cfg.tempOn + cfg.tempOff)) {
+                tempLiga = cfg.tempOn;
+                tempDesliga = cfg.tempOff;
+                return;
+            }
+        }
+        if (addr == CFG1_ADDR) {
+            // Tenta a segunda cópia
+            printf ("Tentando segunda copia da configuracao\n");
+            addr = CFG2_ADDR;
+        } else {
+            // Usar default
+            printf ("Usando configuracao padrao\n");
+            tempLiga = 20;
+            tempDesliga = 25;
+            salvaConfig();
+            return;
+        }
+    } while (true);
+}
 
 // Atualiza a tela
 static void atualizaTela(int cpo) {
@@ -111,17 +151,21 @@ int main() {
 
     // Inicia display
     displayInit();
-    displayStr(0,0, "DQSoft 1.00");
+    displayStr(0,0, "DQSoft 2.00");
     displayStr(2,0, "Termostato");
     displayRefresh();
 
-    // Inicia teclado
-    tecInit(teclas, N_TECLAS);
+    // Inicia encoder
+    encoderInit(pio0, PIN_ENC_CLK, PIN_ENC_DT, PIN_ENC_SW);
 
     // Inicia Sensores
     critical_section_init(&critTemp);
     sensorInit();
     tempAnt = tempAtual = sensorLe();
+
+    // Inicia configuração
+    eepromInit(PIN_SDA, PIN_SCL);
+    leConfig();
 
     // Inicia a tela
     int cpo = CPO_NENHUM;
@@ -134,9 +178,11 @@ int main() {
     while (true) {
         // Trata teclado
         int tec = tecLe();
+        bool mudou;
         if (cpo == CPO_NENHUM) {
             if (tec == TECLA_ENTER) {
                 cpo = CPO_LIGA;     // entra na configuração
+                mudou = false;
                 atualizaTela(cpo);
             } else {  // ignora outras teclas fora da configuração
                 int tempNova;
@@ -157,15 +203,21 @@ int main() {
                 case TECLA_UP:
                     if (*pVal < valMax) {
                         (*pVal)++;
+                        mudou = true;
                     }
                     break;
                 case TECLA_DN:
                     if (*pVal > valMin) {
                         (*pVal)--;
+                        mudou = true;
                     }
                     break;
                 case TECLA_ENTER:
                     cpo = (cpo == CPO_LIGA)? CPO_DESLIGA : CPO_NENHUM;
+                    if ((cpo == CPO_NENHUM) && mudou) {
+                        printf ("Salvando configuracao\n");
+                        salvaConfig();
+                    }
                     break;
             }
             atualizaTela(cpo);
